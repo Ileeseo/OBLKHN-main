@@ -18,4 +18,24 @@ pip install -r requirements.txt
 
 ## 📜Data Preparation
 
-The trainset uses the DeepRockSR2D (carbonate:3600,sandstone:3600). Each image is randomly cropped to a size of 64*64 and the dataloader will further randomly crop the images to the GT_size required for training. GT_size defaults to 128/256 (×2/×4).
+The trainset uses the DeepRockSR2D (carbonate:3600,sandstone:3600). Each image is randomly cropped to a size of 64*64 and the dataloader will further randomly crop the images to the GT_size required for training. GT_size defaults to 128/256 (×2/×4). The datasets are available at https://www.digitalrocksportal.org
+
+## 🚀Train
+
+▶️ You can change the training strategy by modifying the configuration file. The default configuration files are included in ./options/train/MDRN. Take one GPU as the example.
+
+```python
+### Train ###
+### MOBLKHN ###
+python train.py -opt ./options/train/OBLKHN/train_OBLKHN_x2.yml   # ×2
+python train.py -opt ./options/train/OBLKHN/train_OBLKHN_x4.yml   # ×4
+```
+
+## 🚀Test
+```python
+### test ###
+### MOBLKHN ###
+python test.py -opt ./options/test/OBLKHN/test_OBLKHN_x2.yml   # ×2
+python test.py -opt ./options/test/OBLKHN/test_OBLKHN_x4.yml   # ×4
+
+```
