@@ -84,6 +84,77 @@ class BSConvU(nn.Module):
         return fea
 
 
+class BSConvU2(nn.Module):
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size=3,
+                 stride=1,
+                 padding=1,
+                 dilation=1,
+                 bias=True,
+                 padding_mode="zeros"):
+        super().__init__()
+
+        # pointwise
+        self.pw = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=(1, 1),
+            stride=1,
+            padding=0,
+            dilation=1,
+            groups=1,
+            bias=False,
+        )
+
+        # depthwise
+        self.dw = nn.Conv2d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=out_channels,
+            bias=bias,
+            padding_mode=padding_mode,
+        )
+
+        self.rep1x1 = nn.Conv2d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=(1, 1),
+            stride=1,
+            padding=0,
+            dilation=dilation,
+            groups=out_channels,
+            bias=bias,
+            padding_mode=padding_mode,
+        )
+
+    def forward(self, fea):
+        # shortcut = fea.clone()
+        # fea = self.project_in(fea)
+        # fea1, fea2 = self.dwconv(fea).chunk(2, dim=1)
+        x = fea
+        fea = self.pw(fea)  # + self.rep1x1(fea) #self.pw(fea) + fea
+        fea = self.dw(fea) + x + self.rep1x1(fea)
+        # fea = self.dwd(fea) + fea + self.rep1x1(fea)
+        return fea
+
+    def forward(self, fea):
+        # shortcut = fea.clone()
+        # fea = self.project_in(fea)
+        # fea1, fea2 = self.dwconv(fea).chunk(2, dim=1)
+        x = fea
+        fea = self.pw(fea)  # + self.rep1x1(fea) #self.pw(fea) + fea
+        fea = self.dw(fea) + x + self.rep1x1(fea)
+        # fea = self.dwd(fea) + fea + self.rep1x1(fea)
+        return fea
+
+
 def stdv_channels(F):
     assert (F.dim() == 4)
     F_mean = mean_channels(F)
@@ -187,13 +258,14 @@ class CCALayer(nn.Module):
 class ECCA(nn.Module):
     def __init__(self, c_dim, reduction=16):
         super().__init__()
-        self.conv1 = nn.Conv2d(c_dim, c_dim, 1, 1, 0,groups=c_dim)
-        self.dwconv = nn.Conv2d(c_dim, c_dim, 3, 1, 1, groups=c_dim) #3,1,1
+        self.conv1 = nn.Conv2d(c_dim, c_dim, 1, 1, 0, groups=c_dim)
+        self.dwconv = nn.Conv2d(c_dim, c_dim, 3, 1, 1, groups=c_dim)  # 3,1,1
         self.GELU = nn.GELU()
-        #self.Sigmoid = nn.Sigmoid()
-        self.convd = BSConvU(c_dim, c_dim) #nn.Conv2d(c_dim, c_dim,3,1 ,1 ,groups=c_dim, dilation=2)   #nn.Conv2d(c_dim, c_dim,3,1 ,1, groups=c_dim, dilation=2)   # 5,1,5,3  BSConvU(c_dim, c_dim)
+        # self.Sigmoid = nn.Sigmoid()
+        self.convd = BSConvU(c_dim, c_dim)  # nn.Conv2d(c_dim, c_dim,3,1 ,1, groups=c_dim, dilation=2)   # 5,1,5,3
         self.cca = CCALayer(c_dim, c_dim)
-       # self.conv2 = nn.Conv2d(c_dim, c_dim,1,1,)
+
+    # self.conv2 = nn.Conv2d(c_dim, c_dim,1,1,)
 
     def forward(self, x):
         x1 = self.dwconv(x)
@@ -208,6 +280,7 @@ class ECCA(nn.Module):
         x12 = x12 + x1
         x = x + x11 + x12
         return x
+
 
 # class ECCA(nn.Module):
 #     def __init__(self, c_dim, reduction):
@@ -242,7 +315,7 @@ class ESA(nn.Module):
         self.conv_max_1 = BSConvU2(f, f, kernel_size=3)
         self.conv_max_2 = BSConvU2(f, f, kernel_size=3)
         self.conv_max_3 = BSConvU2(f, f, kernel_size=3)
-       # self.var_3 = get_local_weights
+        # self.var_3 = get_local_weights
 
         self.conv3_0 = BSConvU(f, f, kernel_size=3)
         self.conv3_1 = BSConvU(f, f, kernel_size=3)
@@ -260,7 +333,6 @@ class ESA(nn.Module):
         # self.gama = nn.Parameter(torch.normal(mean=0.25, std=0.01, size=(1,1,1)))
         # self.omega = nn.Parameter(torch.normal(mean=0.25, std=0.01, size=(1,1,1)))
 
-
     def forward(self, input):
         c1_ = self.conv1(input)  # channel squeeze
         temp = self.conv2_0(c1_)
@@ -268,12 +340,13 @@ class ESA(nn.Module):
         c1_1 = self.maxPooling_1(self.conv2_1(c1_))  # strided conv 5
         c1_2 = self.maxPooling_2(self.conv2_2(c1_))  # strided conv 7
         c1_3 = self.maxPooling_3(self.conv2_3(c1_))
-        #c1_3 = self.var_3(self.conv2_3(c1_), 7, padding=1)  # strided local-var 7
+        # c1_3 = self.var_3(self.conv2_3(c1_), 7, padding=1)  # strided local-var 7
 
         v_range_0 = self.conv3_0(self.GELU(self.conv_max_0(c1_0)))
         v_range_1 = self.conv3_1(self.GELU(self.conv_max_1(c1_1)))
-        v_range_2 = self.conv3_2(self.GELU(self.conv_max_2(c1_2)))  #v_range_2 = self.conv3_2(self.GELU(self.conv_max_2(c1_2 + c1_3)))
-        v_range_3 = self.conv3_3(self.GELU(self.conv_max_2(c1_3)))
+        v_range_2 = self.conv3_2(
+            self.GELU(self.conv_max_2(c1_2)))  # v_range_2 = self.conv3_2(self.GELU(self.conv_max_2(c1_2 + c1_3)))
+        v_range_3 = self.conv3_3(self.GELU(self.conv_max_3(c1_3)))  # 原来写的是max_2
 
         c3_0 = F.interpolate(v_range_0, (input.size(2), input.size(3)), mode='bilinear', align_corners=False)
         c3_1 = F.interpolate(v_range_1, (input.size(2), input.size(3)), mode='bilinear', align_corners=False)
@@ -281,7 +354,8 @@ class ESA(nn.Module):
         c3_3 = F.interpolate(v_range_3, (input.size(2), input.size(3)), mode='bilinear', align_corners=False)
 
         cf = self.conv_f(c1_)
-        c4 = self.conv4((c3_0 + c3_1 + c3_2 + cf + c3_3 ))   #self.conv4((c3_0 + c3_1 + c3_2 + cf + c3_3))    c3_0 + c3_1 + c3_2 +
+        c4 = self.conv4((
+                                    c3_0 + c3_1 + c3_2 + cf + c3_3))  # self.conv4((c3_0 + c3_1 + c3_2 + cf + c3_3)) c4 = self.conv4((c3_0 + c3_1 + c3_2 + cf + c3_3 ))
         m = self.sigmoid(c4)
 
         return input * m
@@ -296,7 +370,6 @@ class MDSA(nn.Module):
         sa_x = self.body(x)
         sa_x += x
         return sa_x
-
 
 
 class BSConvU_rep(nn.Module):
@@ -339,20 +412,9 @@ class BSConvU_rep(nn.Module):
         self.dwd = nn.Conv2d(
             in_channels=out_channels,
             out_channels=out_channels,
-            kernel_size=1,
+            kernel_size=3,
             stride=stride,
-            padding=0,
-            dilation=2,
-            groups=out_channels,
-            bias=bias,
-            padding_mode=padding_mode,
-        )
-        self.dw1 = nn.Conv2d(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            kernel_size=1,
-            stride=stride,
-            padding=0,
+            padding=1,
             dilation=1,
             groups=out_channels,
             bias=bias,
@@ -370,97 +432,24 @@ class BSConvU_rep(nn.Module):
             bias=bias,
             padding_mode=padding_mode,
         )
+        # self.project_in = nn.Conv2d(in_channels, out_channels * 3, kernel_size=1 , bias=bias)
 
-        # self.rep3x3 = nn.Conv2d(
-        #     in_channels=out_channels,
-        #     out_channels=out_channels,
-        #     kernel_size=(3, 3),
-        #     stride=1,
-        #     padding=1,
-        #     dilation=dilation,
-        #     groups=out_channels,
-        #     bias=bias,
-        #     padding_mode=padding_mode,
-        # )
-        #self.project_in = nn.Conv2d(in_channels, out_channels * 3, kernel_size=1 , bias=bias)
-
-        #self.dwconv = nn.Conv2d(out_channels * 2, out_channels * 2, kernel_size=3, stride=1, padding=1,
-                               # groups=out_channels * 2, bias=bias)
-        #self.project_out = nn.Conv2d(out_channels, out_channels, kernel_size=1,bias=bias)
-    def forward(self, fea):
-         #shortcut = fea.clone()
-         #fea = self.project_in(fea)
-         #fea1, fea2 = self.dwconv(fea).chunk(2, dim=1)
-         # x = fea
-         # fea = self.pw(fea) + fea + self.dwd(fea) # + self.rep1x1(fea) #self.pw(fea) + fea
-         # # fea = self.dw(fea) + x + self.rep1x1(fea)
-         # # fea = self.dwd(fea) + self.rep1x1(fea) + x
-         # fea = self.dwd(fea) + self.rep1x1(fea) + x
-         # fea = self.dw(fea) + self.rep1x1(fea) + fea + self.dw(self.pw(x))
-         # return fea
-        x = fea
-        fea = self.pw(fea) + fea # + self.rep1x1(fea) #self.pw(fea) + fea
-        fea = self.dw(fea) + self.rep1x1(fea) + fea
-
-        return fea
-class BSConvU2(nn.Module):
-
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size=3,
-                 stride=1,
-                 padding=1,
-                 dilation=1,
-                 bias=True,
-                 padding_mode="zeros"):
-        super().__init__()
-
-        # pointwise
-        self.pw = nn.Conv2d(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=(1, 1),
-            stride=1,
-            padding=0,
-            dilation=1,
-            groups=1,
-            bias=False,
-        )
-
-        # depthwise
-        self.dw = nn.Conv2d(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=out_channels,
-            bias=bias,
-            padding_mode=padding_mode,
-        )
-
-        self.rep1x1 = nn.Conv2d(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            kernel_size=(1, 1),
-            stride=1,
-            padding=0,
-            dilation=dilation,
-            groups=out_channels,
-            bias=bias,
-            padding_mode=padding_mode,
-        )
+        # self.dwconv = nn.Conv2d(out_channels * 2, out_channels * 2, kernel_size=3, stride=1, padding=1,
+        # groups=out_channels * 2, bias=bias)
+        # self.project_out = nn.Conv2d(out_channels, out_channels, kernel_size=1,bias=bias)
 
     def forward(self, fea):
-         #shortcut = fea.clone()
-         #fea = self.project_in(fea)
-         #fea1, fea2 = self.dwconv(fea).chunk(2, dim=1)
-        x = fea
-        fea = self.pw(fea)   # + self.rep1x1(fea) #self.pw(fea) + fea
-        fea = self.dw(fea) + x + self.rep1x1(fea)
-        #fea = self.dwd(fea) + fea + self.rep1x1(fea)
+        # shortcut = fea.clone()
+        # fea = self.project_in(fea)
+        # fea1, fea2 = self.dwconv(fea).chunk(2, dim=1)
+        # fea = self.pw(fea) + fea  # + self.rep1x1(fea) #self.pw(fea) + fea
+        # fea = self.dw(fea) + fea + self.rep1x1(fea)
+        # fea = fea + self.rep1x1(fea)   #self.dw(fea) +
+        # return fea
+        x = fea  # 记得拿回
+        fea = self.pw(fea) + fea  # + self.rep1x1(fea) #self.pw(fea) + fea
+        fea = self.dw(fea) + fea + self.rep1x1(fea)
+        # fea = self.dwd(fea) + fea + self.rep1x1(fea)  #记得消去
         return fea
 
 
@@ -503,26 +492,26 @@ class BSConvU2(nn.Module):
 class EADB(nn.Module):
     def __init__(self, in_channels, conv=nn.Conv2d, padding=1):
         super(EADB, self).__init__()
-        #kwargs = {'padding': 1}
+        # kwargs = {'padding': 1}
 
         self.dc = self.distilled_channels = in_channels // 2
         self.rc = self.remaining_channels = in_channels
 
         self.c1_d = nn.Conv2d(in_channels, self.dc, 1)
-        self.c1_r = BSConvU_rep(in_channels, self.rc, kernel_size=3, padding=padding)   #**kwargs
+        self.c1_r = BSConvU_rep(in_channels, self.rc, kernel_size=3, padding=padding)  # **kwargs
         self.c2_d = nn.Conv2d(self.remaining_channels, self.dc, 1)
-        self.c2_r = BSConvU_rep(self.remaining_channels, self.rc, kernel_size=3,padding=padding)
+        self.c2_r = BSConvU_rep(self.remaining_channels, self.rc, kernel_size=3, padding=padding)
         self.c3_d = nn.Conv2d(self.remaining_channels, self.dc, 1)
-        self.c3_r = BSConvU_rep(self.remaining_channels, self.rc, kernel_size=3,padding=padding)
+        self.c3_r = BSConvU_rep(self.remaining_channels, self.rc, kernel_size=3, padding=padding)
         self.atten = Attention(dim=in_channels)
         self.c4 = BSConvU(self.remaining_channels, self.dc, kernel_size=3)
         self.act = nn.GELU()
-        #self.PAconv = nn.Conv2d(in_channels, in_channels, 1)
+        # self.PAconv = nn.Conv2d(in_channels, in_channels, 1)
         ##add sconv to enhance res
         # self.sconv = SeparableConv(in_channels,5,deploy,dynamic,L)
 
-       # self.conv1x1 = nn.Conv2d(4 * in_channels, in_channels, 1, 1, 0, bias=True, dilation=1, groups=1)
-       # self.sigmoid = nn.Sigmoid()
+        # self.conv1x1 = nn.Conv2d(4 * in_channels, in_channels, 1, 1, 0, bias=True, dilation=1, groups=1)
+        # self.sigmoid = nn.Sigmoid()
         self.c5 = nn.Conv2d(self.dc * 4, in_channels, 1)
         self.esa = MDSA(in_channels, conv)
         self.cca = ECCA(in_channels, reduction=16)
@@ -530,134 +519,138 @@ class EADB(nn.Module):
     def forward(self, input):
         distilled_c1 = self.act(self.c1_d(input))
         r_c1 = (self.c1_r(input))
-        r_c1 = self.act(r_c1 )  #+ input
+        r_c1 = self.act(r_c1)
 
         distilled_c2 = self.act(self.c2_d(r_c1))
         r_c2 = (self.c2_r(r_c1))
-        r_c2= self.act(r_c2 )
+        r_c2 = self.act(r_c2)
 
         distilled_c3 = self.act(self.c3_d(r_c2))
         r_c3 = (self.c3_r(r_c2))
-        r_c3 = self.act(r_c3 )
+        r_c3 = self.act(r_c3)
 
         r_c4 = self.act(self.c4(r_c3))
 
         out = torch.cat([distilled_c1, distilled_c2, distilled_c3, r_c4], dim=1)
         out = self.c5(out)
         out = self.atten(out)
-        #scale = self.sigmoid(out)#scale = self.sigmoid(self.PAconv(out))
-        #res = self.conv1x1(torch.cat((input, res1, res2, res3), dim=1))
-        #res = self.atten(res)
-        #res = torch.mul(scale, res)#res = torch.mul(scale, res)
-        #out_fuesd = res + out
+        # scale = self.sigmoid(out)#scale = self.sigmoid(self.PAconv(out))
+        # res = self.conv1x1(torch.cat((input, res1, res2, res3), dim=1))
+        # res = self.atten(res)
+        # res = torch.mul(scale, res)#res = torch.mul(scale, res)
+        # out_fuesd = res + out
         # out_fused = self.esa(out_fused + res)
         # print(out_fused.size())
         out_fused = self.esa(out)  # MDSA
         out_fused = self.cca(out_fused)  # ECCA
-        return out_fused + input#, res
-##
-#加入rep1x1效果更好
+        # out_fused = self.cca(out)
+        return out_fused + input  # , res
+
+
+# 加入rep1x1效果更好
 class Attention(nn.Module):
 
     def __init__(self, dim):
         super().__init__()
         self.pointwise = nn.Conv2d(dim, dim, 1)
-        self.depthwise = nn.Conv2d(dim, dim, 3, padding=1, groups=dim)   #5,2,1
-        self.depthwise_dilated = nn.Conv2d(dim, dim, 5, stride=1, padding=6, groups=dim, dilation=3)#5,1,6 padding=6
-        self.rep1 = nn.Conv2d(dim,dim,1,1,0,groups=dim)
+        self.depthwise = nn.Conv2d(dim, dim, 3, padding=1, groups=dim)  # 5,2,1
+        self.depthwise_dilated = nn.Conv2d(dim, dim, 5, stride=1, padding=6, groups=dim, dilation=3)  # 5,1,16#padding=6
+        self.rep1 = nn.Conv2d(dim, dim, 1, 1, 0, groups=dim)
+
     def forward(self, x):
         u = x.clone()
         attn = self.pointwise(x)
-        attn = self.depthwise(attn) #+ self.rep1(attn)      #+ attn
-        attn = self.depthwise_dilated(attn)  #+ self.rep1(attn)   #+ attn
-        return u * attn
-
-class Attention1(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-
-        self.proj_1 = nn.Conv2d(dim, dim, 3,1,1,groups=dim)  #nn.Conv2d(dim, dim, 1,groups=dim)  #nn.Conv2d(dim, dim, 1,groups=dim)
-        self.activation = nn.GELU()
-        self.spatial_gating_unit = Attention(dim)
-        self.proj_2 = nn.Conv2d(dim, dim, 1,groups=dim)
-
-    def forward(self, x):
-        shorcut = x.clone()
-        x = self.proj_1(x)
-        x = self.activation(x)
-        x = self.spatial_gating_unit(x)
-        x = self.proj_2(x)
-        x = x + shorcut
-        return x
-class LSKA(nn.Module):
-    def __init__(self, dim, k_size):
-        super().__init__()
-
-        self.k_size = k_size
-
-        if k_size == 7:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,(3-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=((3-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,2), groups=dim, dilation=2)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=(2,0), groups=dim, dilation=2)
-        elif k_size == 11:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,(3-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=((3-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,4), groups=dim, dilation=2)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=(4,0), groups=dim, dilation=2)
-        elif k_size == 23:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 7), stride=(1,1), padding=(0,9), groups=dim, dilation=3)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(7, 1), stride=(1,1), padding=(9,0), groups=dim, dilation=3)
-        elif k_size == 35:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 11), stride=(1,1), padding=(0,15), groups=dim, dilation=3)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(11, 1), stride=(1,1), padding=(15,0), groups=dim, dilation=3)
-        elif k_size == 41:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 13), stride=(1,1), padding=(0,18), groups=dim, dilation=3)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(13, 1), stride=(1,1), padding=(18,0), groups=dim, dilation=3)
-        elif k_size == 53:
-            self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
-            self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
-            self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 17), stride=(1,1), padding=(0,24), groups=dim, dilation=3)
-            self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(17, 1), stride=(1,1), padding=(24,0), groups=dim, dilation=3)
-
-        self.conv1 = nn.Conv2d(dim, dim, 1)
-
-
-    def forward(self, x):
-        u = x.clone()
-        attn = self.conv0h(x)
-        attn = self.conv0v(attn)
-        attn = self.conv_spatial_h(attn)
-        attn = self.conv_spatial_v(attn)
-        attn = self.conv1(attn)
+        attn = self.depthwise(attn) + self.rep1(attn)  # + attn
+        attn = self.depthwise_dilated(attn) + self.rep1(attn)  # + attn
         return u * attn
 
 
-class Attention2(nn.Module):
-    def __init__(self, dim, k_size=23):
-        super().__init__()
+# class Attention1(nn.Module):
+#     def __init__(self, dim):
+#         super().__init__()
 
-        self.proj_1 = nn.Conv2d(dim, dim, 1,groups=dim)  #nn.Conv2d(dim, dim, 1,groups=dim)
-        self.activation = nn.GELU()
-        self.spatial_gating_unit = LSKA(dim, k_size)
-        self.proj_2 = nn.Conv2d(dim, dim, 1,groups=dim)
+#         self.proj_1 = nn.Conv2d(dim, dim, 1,groups=dim)
+#         self.activation = nn.GELU()
+#         self.spatial_gating_unit = Attention(dim)
+#         self.proj_2 = nn.Conv2d(dim, dim, 1,groups=dim)
 
-    def forward(self, x):
-        shorcut = x.clone()
-        x = self.proj_1(x)
-        x = self.activation(x)
-        x = self.spatial_gating_unit(x)
-        x = self.proj_2(x)
-        x = x + shorcut
-        return x
+#     def forward(self, x):
+#         shorcut = x.clone()
+#         x = self.proj_1(x)
+#         x = self.activation(x)
+#         x = self.spatial_gating_unit(x)
+#         x = self.proj_2(x)
+#         x = x + shorcut
+#         return x   #1为11
 
-##
+# class LSKA(nn.Module):
+#     def __init__(self, dim, k_size=11):
+#         super().__init__()
+
+#         self.k_size = k_size
+
+#         if k_size == 7:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,(3-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=((3-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,2), groups=dim, dilation=2)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=(2,0), groups=dim, dilation=2)
+#         elif k_size == 11:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 3), stride=(1,1), padding=(0,(3-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(3, 1), stride=(1,1), padding=((3-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,4), groups=dim, dilation=2)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=(4,0), groups=dim, dilation=2)
+#         elif k_size == 23:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 7), stride=(1,1), padding=(0,9), groups=dim, dilation=3)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(7, 1), stride=(1,1), padding=(9,0), groups=dim, dilation=3)
+#         elif k_size == 35:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 11), stride=(1,1), padding=(0,15), groups=dim, dilation=3)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(11, 1), stride=(1,1), padding=(15,0), groups=dim, dilation=3)
+#         elif k_size == 41:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 13), stride=(1,1), padding=(0,18), groups=dim, dilation=3)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(13, 1), stride=(1,1), padding=(18,0), groups=dim, dilation=3)
+#         elif k_size == 53:
+#             self.conv0h = nn.Conv2d(dim, dim, kernel_size=(1, 5), stride=(1,1), padding=(0,(5-1)//2), groups=dim)
+#             self.conv0v = nn.Conv2d(dim, dim, kernel_size=(5, 1), stride=(1,1), padding=((5-1)//2,0), groups=dim)
+#             self.conv_spatial_h = nn.Conv2d(dim, dim, kernel_size=(1, 17), stride=(1,1), padding=(0,24), groups=dim, dilation=3)
+#             self.conv_spatial_v = nn.Conv2d(dim, dim, kernel_size=(17, 1), stride=(1,1), padding=(24,0), groups=dim, dilation=3)
+
+#         self.conv1 = nn.Conv2d(dim, dim, 1)
+
+
+#     def forward(self, x):
+#         u = x.clone()
+#         attn = self.conv0h(x)
+#         attn = self.conv0v(attn)
+#         attn = self.conv_spatial_h(attn)
+#         attn = self.conv_spatial_v(attn)
+#         attn = self.conv1(attn)
+#         return u * attn
+
+
+# class Attention2(nn.Module):
+#     def __init__(self, dim, k_size=11):
+#         super().__init__()
+
+#         self.proj_1 = nn.Conv2d(dim, dim, 1,groups=dim)
+#         self.activation = nn.GELU()
+#         self.spatial_gating_unit = LSKA(dim, k_size)
+#         self.proj_2 = nn.Conv2d(dim, dim, 1,groups=dim)
+
+#     def forward(self, x):
+#         shorcut = x.clone()
+#         x = self.proj_1(x)
+#         x = self.activation(x)
+#         x = self.spatial_gating_unit(x)
+#         x = self.proj_2(x)
+#         x = x + shorcut
+#         return x   #1为11
+
 # class DFDB(nn.Module):
 #     def __init__(self, in_channels, deploy=True, dynamic=True, L=None, style='DBB', res=True):
 #         super(DFDB, self).__init__()
@@ -735,32 +728,31 @@ class Attention2(nn.Module):
 #             return out
 
 
-
-#@ARCH_REGISTRY.register()
-class MDRN(nn.Module):
+@ARCH_REGISTRY.register()
+class OBLKHN(nn.Module):
     def __init__(self, num_in_ch=3, num_feat=56, num_block=6, num_out_ch=3, upscale=2,
                  rgb_mean=(0.4488, 0.4371, 0.4040), p=0.25):
-        super(MDRN, self).__init__()
+        super(OBLKHN, self).__init__()
         kwargs = {'padding': 1}
         self.mean = torch.Tensor(rgb_mean).view(1, 3, 1, 1)
-        #self.conv = BSConvU
+        # self.conv = BSConvU
         self.fea_conv = nn.Conv2d(num_in_ch, num_feat, kernel_size=3, stride=1, padding='same')
 
-        self.B1 = EADB(in_channels=num_feat)#, conv=self.conv)  #EADB DFDB
-        self.B2 = EADB(in_channels=num_feat)#, conv=self.conv)
-        self.B3 = EADB(in_channels=num_feat)#, conv=self.conv)
-        self.B4 = EADB(in_channels=num_feat)#, conv=self.conv)
-        self.B5 = EADB(in_channels=num_feat)#, conv=self.conv)
-        self.B6 = EADB(in_channels=num_feat)#, conv=self.conv)
-        #self.B7 = EADB(in_channels=num_feat)#, conv=self.conv)
-        #self.B8 = EADB(in_channels=num_feat)#, conv=self.conv)
+        self.B1 = EADB(in_channels=num_feat)  # , conv=self.conv)  #EADB DFDB
+        self.B2 = EADB(in_channels=num_feat)  # , conv=self.conv)
+        self.B3 = EADB(in_channels=num_feat)  # , conv=self.conv)
+        self.B4 = EADB(in_channels=num_feat)  # , conv=self.conv)
+        self.B5 = EADB(in_channels=num_feat)  # , conv=self.conv)
+        self.B6 = EADB(in_channels=num_feat)  # , conv=self.conv)
+        # self.B7 = EADB(in_channels=num_feat)#, conv=self.conv)
+        # self.B8 = EADB(in_channels=num_feat)#, conv=self.conv)
         # self.B9 = EADB(in_channels=num_feat, out_channels=num_feat, conv=self.conv, p=p)
         # self.B10 = EADB(in_channels=num_feat, out_channels=num_feat, conv=self.conv, p=p)
 
         self.c1 = nn.Conv2d(num_feat * num_block, num_feat, 1)
         self.GELU = nn.GELU()
 
-        self.c2 =  BSConvU(num_feat, num_feat, kernel_size=3)
+        self.c2 = BSConvU(num_feat, num_feat, kernel_size=3)
 
         # self.to_RGB = nn.Conv2d(num_feat, 3, 3, 1, 1)
         self.upsampler = PixelShuffleDirect(scale=upscale, num_feat=num_feat, num_out_ch=num_out_ch)
@@ -768,7 +760,7 @@ class MDRN(nn.Module):
     def forward(self, input):
         self.mean = self.mean.type_as(input)
         input = input - self.mean
-        #denosed_input = denosed_input - self.mean
+        # denosed_input = denosed_input - self.mean
         # SR
         out_fea = self.fea_conv(input)
         out_B1 = self.B1(out_fea)
@@ -777,123 +769,51 @@ class MDRN(nn.Module):
         out_B4 = self.B4(out_B3)
         out_B5 = self.B5(out_B4)
         out_B6 = self.B6(out_B5)
-        #out_B7 = self.B7(out_B6)
-        #out_B8 = self.B8(out_B7)
+        # out_B7 = self.B7(out_B6)
+        # out_B8 = self.B8(out_B7)
 
-        out = self.upsampler(self.c2(self.GELU(self.c1(torch.cat([out_B1, out_B2, out_B3, out_B4,out_B5,out_B6
-                                                                  ], dim=1)))) + out_fea) + self.mean       #out_B5, out_B6
+        out = self.upsampler(self.c2(self.GELU(self.c1(torch.cat([out_B1, out_B2, out_B3, out_B4, out_B5, out_B6
+                                                                  ], dim=1)))) + out_fea) + self.mean  # out_B5, out_B6
         return out
 
+    def load_state_dict(self, state_dict, strict=False):
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name in own_state:
+                if isinstance(param, nn.Parameter):
+                    param = param.data
+                try:
+                    own_state[name].copy_(param)
+                except Exception:
+                    if name.find('tail') >= 0:
+                        print('Replace pre-trained upsampler to new one...')
+                    else:
+                        raise RuntimeError('While copying the parameter named {}, '
+                                           'whose dimensions in the model are {} and '
+                                           'whose dimensions in the checkpoint are {}.'
+                                           .format(name, own_state[name].size(), param.size()))
+            elif strict:
+                if name.find('tail') == -1:
+                    raise KeyError('unexpected key "{}" in state_dict'
+                                   .format(name))
 
+        if strict:
+            missing = set(own_state.keys()) - set(state_dict.keys())
+            if len(missing) > 0:
+                raise KeyError('missing keys in state_dict: "{}"'.format(missing))
 
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input = torch.rand(2, 3, 64, 64).to(device)
-    net = MDRN().to(device)
+    net = OBLKHN().to(device)
 
     output = net(input)
     print(output.size())
-    model = MDRN()
+    model = OBLKHN()
     print(model)
-if __name__ == '__main__':
-    main()
-        # del out_B1, out_B2, out_B3, out_B4, out_B5
-        # # Denose
-        # out_fea = self.fea_conv(denosed_input)
-        # out_B1 = self.B1(out_fea)
-        # out_B2 = self.B2(out_B1)
-        # out_B3 = self.B3(out_B2)
-        # out_B4 = self.B4(out_B3)
-        # out_B5 = self.B5(out_B4)
-        # # out_B6 = self.B6(out_B5)
-        # # out_B7 = self.B7(out_B6)
-        # # out_B8 = self.B8(out_B7)
-        # out = self.c2(self.GELU(self.c1(torch.cat([out_B1, out_B2, out_B3, out_B4, out_B5], dim=1)))) + out_fea
-        # if detach_ture:
-        #     output_denosed = self.to_RGB(out.detach()) + self.mean
-        # else:
-        #     output_denosed = self.to_RGB(out) + self.mean
 
 
-# if __name__ == '__main__':
-#     window_size = 8
-#     upscale = 4
-#     height = (2040 // upscale)
-#     width = (1340 // upscale)
-#     model = MDRN()
-#     img = plt.imread(r'D:\LAM-main\test_images\8.png')   #D:\LAM-main\test_images\8.png   r'C:\Users\Bolt\Desktop\Set5\LRbicx2\butterfly.png'
-#     img_tensor = torch.from_numpy(img)
-#     img_tensor = img_tensor.permute(2, 0, 1).unsqueeze(0)
-#     out1 = model(img_tensor)
-#     plt.figure(0)
-#     plt.imshow(out1.squeeze(0).permute(1, 2, 0).detach().numpy())
-#
-#     # print(model)
-#     model.eval()
-#     total_params = sum(p.numel() for p in model.parameters())
-#     print(f'{total_params:,} total parameters.')
-#     total_trainable_params = sum(
-#         p.numel() for p in model.parameters() if p.requires_grad)
-#     print(f'{total_trainable_params:,} training parameters.')
-#     x = torch.randn((1, 3, height, width))
-#     a = time.time()
-#     x = model(x)
-#     b = time.time()
-#     print(x.shape)
-#     print(b-a)
-#
-#     iterations = 100  # 重复计算的轮次
-#
-#     device = torch.device("cuda:0")
-#     model.to(device)
-#
-#     random_input = x.to(device)
-#     starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-#
-#     # GPU预热
-#     for _ in range(200):
-#         with torch.no_grad():
-#             _= model(random_input)
-#
-#     # 测速
-#     times = torch.zeros(iterations)  # 存储每轮iteration的时间
-#     with torch.no_grad():
-#         for iter in range(iterations):
-#             starter.record()
-#             _= model(random_input)
-#             ender.record()
-#             # 同步GPU时间
-#             torch.cuda.synchronize()
-#             curr_time = starter.elapsed_time(ender)  # 计算时间
-#             times[iter] = curr_time
-#             # print(curr_time)
-#
-#     mean_time = times.mean().item()
-#     print("Inference time: {:.6f}, FPS: {} ".format(mean_time, 1000 / mean_time))
-#
-#     print('最大显存', torch.cuda.max_memory_allocated(torch.cuda.current_device()) / 1024 ** 2)
-#     # print(torch.cuda.memory_summary())
-#     from utility.model_summary import get_model_flops, get_model_activation
-#     # from thop import profile
-#
-#     input_dim = (3, 320, 180)  # set the input dimension
-#     activations, num_conv = get_model_activation(model, input_dim)
-#     activations = activations / 10 ** 6
-#     print("{:>16s} : {:<.4f} [M]".format("#Activations", activations))
-#     print("{:>16s} : {:<d}".format("#Conv2d", num_conv))
-#
-#     flops = get_model_flops(model, input_dim, False)
-#     flops = flops / 10 ** 9
-#     print("{:>16s} : {:<.4f} [G]".format("FLOPs", flops))
-#
-#     num_parameters = sum(map(lambda x: x.numel(), model.parameters()))
-#     num_parameters = num_parameters / 10 ** 6
-#     print("{:>16s} : {:<.4f} [M]".format("#Params", num_parameters))
-#
-#     # input = torch.randn((1, 3, 320, 180)).cuda()
-#     # x, y = profile(model, inputs=(input,))
-#     # print("{:>16s} : {:<.4f} [G]".format("FLOPs", x / 10 ** 9))
-# # print(torch.cuda.memory_summary())
 
-
+# 保存模型为 .pt 文件
+# torch.save(model.state_dict(), 'MDRN.pt')
