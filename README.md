@@ -22,8 +22,6 @@ The trainset uses the DeepRockSR2D (carbonate:3600,sandstone:3600). Each image i
 
 ## 🚀Train
 
-▶️ You can change the training strategy by modifying the configuration file. The default configuration files are included in ./options/train/MDRN. Take one GPU as the example.
-
 ```python
 ### Train ###
 ### MOBLKHN ###
