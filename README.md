@@ -13,7 +13,7 @@ Yubo Zhang[^†], Junhao Bi, Chao Han,  Lei Xu, Haibin Xiang, Haihua Kong, Juanj
 ## 🔧Installation
 
 ```python
-pip install -r requirements.txt -i http://pypi.douban.com/simple/ --trusted-host pypi.douban.com
+pip install -r requirements.txt 
 ```
 
 ## 📜Data Preparation
