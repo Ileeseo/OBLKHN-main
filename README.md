@@ -1,6 +1,6 @@
 # **OBLKHN**
 Optimized Bi-dimensional Large Kernel Hybrid Attention Mechanism for Digital Rock Image Super-Resolution
-Yubo Zhang[^†], Junhao Bi, Chao Han,  Lei Xu, Haibin Xiang, Haihua Kong, Juanjuan Geng, Wanying Zhao 
+#Yubo Zhang[^†], Junhao Bi, Chao Han,  Lei Xu, Haibin Xiang, Haihua Kong, Juanjuan Geng, Wanying Zhao 
 [^†]: Corresponding author
 
 ## 💻Environment
